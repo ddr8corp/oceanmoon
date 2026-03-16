@@ -1,5 +1,5 @@
 import AVFoundation
-import WhisperKit
+import Speech
 import os
 
 private let log = Logger(subsystem: "com.oceanmoon", category: "Speech")
@@ -16,44 +16,51 @@ final class SpeechRecognitionService: @unchecked Sendable {
     var onUtteranceFinalized: (@Sendable (String, TimeInterval) -> Void)?
 
     private var audioEngine = AVAudioEngine()
-    private var whisperKit: WhisperKit?
+    private var transcriber: SpeechTranscriber?
+    private var analyzer: SpeechAnalyzer?
+    private var analyzerFormat: AVAudioFormat?
+    private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
+    private var converter: AVAudioConverter?
 
     private var startTime: Date?
     private var timer: Timer?
 
-    // Chunk-based: accumulate audio, transcribe when chunk is ready, clear buffer
-    private var audioSamples: [Float] = []
-    private var chunkTimer: Timer?
-    private let chunkDuration: TimeInterval = 5.0  // Process every 5 seconds
-    private var isTranscribing = false
+    private var pauseTimer: Timer?
+    private let pauseThreshold: TimeInterval = 2.0
+    private var currentSegmentText = ""
 
-    private let queue = DispatchQueue(label: "com.oceanmoon.speech", qos: .userInitiated)
+    private var analyzerTask: Task<Void, Never>?
+    private var resultTask: Task<Void, Never>?
 
     func loadModel() async {
         guard !isModelLoaded else { return }
 
         DispatchQueue.main.async { [weak self] in
-            self?.modelLoadingProgress = "モデルをダウンロード中...(初回は数分かかります)"
+            self?.modelLoadingProgress = "音声モデルを準備中..."
         }
 
         do {
-            let config = WhisperKitConfig(
-                model: "small",
-                computeOptions: ModelComputeOptions(
-                    audioEncoderCompute: .cpuAndGPU,
-                    textDecoderCompute: .cpuAndGPU
-                )
+            let locale = Locale(identifier: "ja-JP")
+
+            // Check if ja-JP is supported
+            let supported = await SpeechTranscriber.supportedLocales
+            let jaSupported = supported.contains { $0.identifier.hasPrefix("ja") }
+            log.info("🗣️ ja-JP supported: \(jaSupported)")
+            log.info("🗣️ Supported locales: \(supported.map { $0.identifier })")
+
+            let t = SpeechTranscriber(
+                locale: locale,
+                preset: .progressiveTranscription
             )
-            let kit = try await WhisperKit(config)
-            whisperKit = kit
+            transcriber = t
 
             DispatchQueue.main.async { [weak self] in
                 self?.isModelLoaded = true
                 self?.modelLoadingProgress = ""
             }
-            log.info("✅ WhisperKit model loaded (large-v3)")
+            log.info("✅ SpeechTranscriber ready (ja-JP)")
         } catch {
-            log.error("❌ WhisperKit load: \(error.localizedDescription)")
+            log.error("❌ Model load: \(error.localizedDescription)")
             DispatchQueue.main.async { [weak self] in
                 self?.modelLoadingProgress = "モデル読み込み失敗: \(error.localizedDescription)"
             }
@@ -71,38 +78,70 @@ final class SpeechRecognitionService: @unchecked Sendable {
     }
 
     func start() {
-        queue.async { [weak self] in self?.startOnQueue() }
+        Task { await startAsync() }
     }
 
     func pause() {
-        queue.async { [weak self] in
-            guard let self, self.isRecording, !self.isPaused else { return }
-            self.audioEngine.pause()
-            self.chunkTimer?.invalidate()
-            DispatchQueue.main.async { self.isPaused = true }
-            self.timer?.invalidate()
+        audioEngine.pause()
+        timer?.invalidate()
+        pauseTimer?.invalidate()
+        DispatchQueue.main.async { [weak self] in
+            self?.isPaused = true
         }
     }
 
     func resume() {
-        queue.async { [weak self] in
-            guard let self, self.isRecording, self.isPaused else { return }
-            DispatchQueue.main.async { self.isPaused = false }
-            try? self.audioEngine.start()
-            self.startTimer()
-            self.startChunkTimer()
+        try? audioEngine.start()
+        startTimer()
+        DispatchQueue.main.async { [weak self] in
+            self?.isPaused = false
         }
     }
 
     func stop() {
-        queue.async { [weak self] in self?.stopOnQueue() }
+        log.info("🛑 Stopping")
+        timer?.invalidate()
+        timer = nil
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+
+        inputBuilder?.finish()
+        inputBuilder = nil
+
+        let text = currentSegmentText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            let offset = elapsedSeconds
+            let callback = onUtteranceFinalized
+            DispatchQueue.main.async { [weak self] in
+                callback?(text, offset)
+                self?.currentText = ""
+            }
+        }
+
+        analyzerTask?.cancel()
+        resultTask?.cancel()
+        analyzerTask = nil
+        resultTask = nil
+        analyzer = nil
+
+        DispatchQueue.main.async { [weak self] in
+            self?.isRecording = false
+            self?.isPaused = false
+            self?.currentText = ""
+        }
+
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        log.info("🛑 Stopped")
     }
 
     // MARK: - Private
 
-    private func startOnQueue() {
-        guard whisperKit != nil else {
-            log.error("❌ WhisperKit not loaded")
+    private func startAsync() async {
+        guard let transcriber else {
+            log.error("❌ Transcriber not initialized")
             return
         }
 
@@ -121,8 +160,36 @@ final class SpeechRecognitionService: @unchecked Sendable {
             return
         }
 
-        audioSamples.removeAll()
-        isTranscribing = false
+        // Get compatible audio format
+        if let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) {
+            analyzerFormat = format
+            log.info("🎵 Analyzer format: \(format.sampleRate)Hz \(format.channelCount)ch")
+        } else {
+            log.error("❌ No compatible audio format")
+            return
+        }
+
+        // Create async stream for audio input
+        let (inputSequence, builder) = AsyncStream<AnalyzerInput>.makeStream()
+        inputBuilder = builder
+
+        // Create analyzer
+        let speechAnalyzer = SpeechAnalyzer(modules: [transcriber])
+        analyzer = speechAnalyzer
+
+        // Set up audio converter if needed
+        let inputNode = audioEngine.inputNode
+        let nativeFormat = inputNode.outputFormat(forBus: 0)
+        log.info("🎵 Native format: \(nativeFormat.sampleRate)Hz \(nativeFormat.channelCount)ch")
+
+        if let analyzerFormat, (nativeFormat.sampleRate != analyzerFormat.sampleRate || nativeFormat.channelCount != analyzerFormat.channelCount) {
+            converter = AVAudioConverter(from: nativeFormat, to: analyzerFormat)
+            log.info("🔄 Converter: \(nativeFormat.sampleRate)→\(analyzerFormat.sampleRate)Hz")
+        } else {
+            converter = nil
+        }
+
+        currentSegmentText = ""
 
         DispatchQueue.main.async { [weak self] in
             self?.startTime = Date()
@@ -134,34 +201,51 @@ final class SpeechRecognitionService: @unchecked Sendable {
 
         startTimer()
 
-        // Capture audio at 16kHz mono
-        let inputNode = audioEngine.inputNode
-        let nativeFormat = inputNode.outputFormat(forBus: 0)
-        let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)!
+        // Listen for transcription results
+        resultTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await result in transcriber.results {
+                    let text = String(result.text.characters)
+                    let isFinal = result.isFinal
 
-        guard let converter = AVAudioConverter(from: nativeFormat, to: targetFormat) else {
-            log.error("❌ Cannot create audio converter")
-            return
+                    if isFinal {
+                        log.info("🗣️ [FINAL] \"\(text)\"")
+                        self.finalizeSegment(text: text)
+                    } else {
+                        log.info("🗣️ \"\(text)\"")
+                        self.currentSegmentText = text
+                        DispatchQueue.main.async { [weak self] in
+                            self?.currentText = text
+                        }
+                        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            self.resetPauseTimer()
+                        }
+                    }
+                }
+                log.info("📊 Results stream ended")
+            } catch {
+                log.warning("⚠️ Results: \(error.localizedDescription)")
+            }
         }
 
+        // Install audio tap
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: nativeFormat) { [weak self] buffer, _ in
-            guard let self else { return }
+            guard let self, let builder = self.inputBuilder else { return }
 
-            let ratio = targetFormat.sampleRate / nativeFormat.sampleRate
-            let convertedFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-            guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: convertedFrameCount) else { return }
+            if let converter = self.converter, let targetFormat = self.analyzerFormat {
+                let ratio = targetFormat.sampleRate / nativeFormat.sampleRate
+                let convertedFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+                guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: convertedFrameCount) else { return }
 
-            var error: NSError?
-            converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
-
-            if let data = convertedBuffer.floatChannelData?[0] {
-                let samples = Array(UnsafeBufferPointer(start: data, count: Int(convertedBuffer.frameLength)))
-                self.queue.async {
-                    self.audioSamples.append(contentsOf: samples)
+                var error: NSError?
+                converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                    outStatus.pointee = .haveData
+                    return buffer
                 }
+                builder.yield(AnalyzerInput(buffer: convertedBuffer))
+            } else {
+                builder.yield(AnalyzerInput(buffer: buffer))
             }
         }
 
@@ -174,140 +258,49 @@ final class SpeechRecognitionService: @unchecked Sendable {
             return
         }
 
-        startChunkTimer()
-        log.info("✅ Started (WhisperKit, chunk=\(self.chunkDuration)s)")
+        // Start analyzer (blocks until input ends)
+        analyzerTask = Task {
+            do {
+                try await speechAnalyzer.start(inputSequence: inputSequence)
+                log.info("📊 Analyzer finished")
+            } catch {
+                log.warning("⚠️ Analyzer: \(error.localizedDescription)")
+            }
+        }
+
+        log.info("✅ Started (SpeechAnalyzer)")
     }
 
-    private func startChunkTimer() {
+    private func finalizeSegment(text: String) {
+        pauseTimer?.invalidate()
+        pauseTimer = nil
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        let offset = elapsedSeconds
+        let callback = onUtteranceFinalized
+
+        log.info("✅ Finalized: \"\(trimmed)\"")
+
+        currentSegmentText = ""
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.chunkTimer?.invalidate()
-            self.chunkTimer = Timer.scheduledTimer(withTimeInterval: self.chunkDuration, repeats: true) { [weak self] _ in
-                guard let self, self.isRecording, !self.isPaused, !self.isTranscribing else { return }
-                Task {
-                    await self.processChunk()
-                }
-            }
+            callback?(trimmed, offset)
+            self?.currentText = ""
         }
     }
 
-    private func processChunk() async {
-        guard let whisperKit else { return }
-
-        // Grab and clear the buffer atomically
-        let samples: [Float] = queue.sync {
-            let s = self.audioSamples
-            self.audioSamples.removeAll()
-            return s
+    private func resetPauseTimer() {
+        pauseTimer?.invalidate()
+        let timer = Timer(timeInterval: pauseThreshold, repeats: false) { [weak self] _ in
+            guard let self, self.isRecording, !self.isPaused else { return }
+            let text = self.currentSegmentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { return }
+            log.info("⏱️ Pause detected")
+            self.finalizeSegment(text: text)
         }
-
-        // Need at least 0.5s of audio
-        guard samples.count > 8000 else {
-            log.info("⏭️ Chunk too short (\(samples.count) samples), skipping")
-            return
-        }
-
-        isTranscribing = true
-        let duration = Double(samples.count) / 16000.0
-        log.info("📝 Processing chunk: \(String(format: "%.1f", duration))s (\(samples.count) samples)")
-
-        do {
-            let options = DecodingOptions(
-                language: "ja",
-                temperature: 0.0,
-                suppressBlank: true
-            )
-
-            let results = try await whisperKit.transcribe(
-                audioArray: samples,
-                decodeOptions: options
-            )
-
-            if let result = results.first {
-                let text = result.text.trimmingCharacters(in: .whitespacesAndNewlines)
-
-                // Filter out Whisper hallucinations
-                let isHallucination = text.isEmpty
-                    || text == "(音楽)"
-                    || text == "ご視聴ありがとうございました"
-                    || text.hasPrefix("(")
-                    || text.count <= 1
-
-                if !isHallucination {
-                    let offset = elapsedSeconds
-                    let callback = onUtteranceFinalized
-                    log.info("✅ \"\(text)\"")
-
-                    DispatchQueue.main.async { [weak self] in
-                        callback?(text, offset)
-                        self?.currentText = ""
-                    }
-                } else {
-                    log.info("🚫 Filtered hallucination: \"\(text)\"")
-                }
-            }
-        } catch {
-            log.warning("⚠️ Transcribe: \(error.localizedDescription)")
-        }
-
-        isTranscribing = false
-    }
-
-    private func stopOnQueue() {
-        log.info("🛑 Stopping")
-        timer?.invalidate()
-        timer = nil
-        chunkTimer?.invalidate()
-        chunkTimer = nil
-
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
-
-        // Process remaining audio
-        if !audioSamples.isEmpty {
-            let remaining = audioSamples
-            audioSamples.removeAll()
-            if remaining.count > 8000, let whisperKit {
-                Task {
-                    do {
-                        let options = DecodingOptions(language: "ja", temperature: 0.0, suppressBlank: true)
-                        let results = try await whisperKit.transcribe(audioArray: remaining, decodeOptions: options)
-                        if let text = results.first?.text.trimmingCharacters(in: .whitespacesAndNewlines),
-                           !text.isEmpty, text != "(音楽)" {
-                            let offset = self.elapsedSeconds
-                            let callback = self.onUtteranceFinalized
-                            DispatchQueue.main.async { [weak self] in
-                                callback?(text, offset)
-                                self?.isRecording = false
-                                self?.isPaused = false
-                                self?.currentText = ""
-                            }
-                            return
-                        }
-                    } catch {}
-                    DispatchQueue.main.async { [weak self] in
-                        self?.isRecording = false
-                        self?.isPaused = false
-                        self?.currentText = ""
-                    }
-                }
-            } else {
-                DispatchQueue.main.async { [weak self] in
-                    self?.isRecording = false
-                    self?.isPaused = false
-                    self?.currentText = ""
-                }
-            }
-        } else {
-            DispatchQueue.main.async { [weak self] in
-                self?.isRecording = false
-                self?.isPaused = false
-                self?.currentText = ""
-            }
-        }
-
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        log.info("🛑 Stopped")
+        RunLoop.main.add(timer, forMode: .common)
+        self.pauseTimer = timer
     }
 
     private func startTimer() {
