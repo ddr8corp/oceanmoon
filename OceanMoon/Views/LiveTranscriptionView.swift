@@ -83,6 +83,15 @@ struct LiveTranscriptionView: View {
                             .id(utterance.id)
                         }
 
+                        // Model loading indicator
+                        if !speechService.modelLoadingProgress.isEmpty {
+                            Text(speechService.modelLoadingProgress)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 20)
+                        }
+
                         if !speechService.currentText.isEmpty {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text(formattedElapsed)
@@ -180,7 +189,17 @@ struct LiveTranscriptionView: View {
     private func startRecognition() async {
         let authorized = await speechService.requestAuthorization()
         guard authorized else {
-            showError = "音声認識の許可が必要です。設定アプリから許可してください。"
+            showError = "マイクの許可が必要です。設定アプリから許可してください。"
+            return
+        }
+
+        // Load WhisperKit model if not loaded
+        if !speechService.isModelLoaded {
+            await speechService.loadModel()
+        }
+
+        guard speechService.isModelLoaded else {
+            showError = "モデルの読み込みに失敗しました。"
             return
         }
 
