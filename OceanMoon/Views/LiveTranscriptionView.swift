@@ -7,11 +7,10 @@ struct LiveTranscriptionView: View {
     @Bindable var session: Session
     @State private var speechService = SpeechRecognitionService()
     @State private var showError: String?
-    @State private var hasAuthorization = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // Navigation bar
+            // Nav bar
             HStack {
                 Button(action: { stopAndDismiss() }) {
                     Image(systemName: "xmark")
@@ -22,19 +21,19 @@ struct LiveTranscriptionView: View {
                 Text("OceanMoon")
                     .font(.headline)
                 Spacer()
-                Color.clear.frame(width: 24)
+                Color.clear.frame(width: 24, height: 24)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
 
-            // Session header
-            HStack {
+            // Session header card
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.title)
-                        .font(.title3)
+                        .font(.subheadline)
                         .fontWeight(.semibold)
-                    Text(session.createdAt.formatted(date: .numeric, time: .shortened))
-                        .font(.caption)
+                    Text(formatDate(session.createdAt))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -43,112 +42,114 @@ struct LiveTranscriptionView: View {
                         .fill(speechService.isPaused ? .orange : .green)
                         .frame(width: 8, height: 8)
                     Text(formattedElapsed)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-            .padding(.horizontal)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 16)
 
-            // Tab header
+            // 文字起こし tab header
             HStack {
-                Text("文字起こし")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                VStack(spacing: 4) {
+                    Text("文字起こし")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Rectangle()
+                        .fill(.primary)
+                        .frame(height: 2)
+                        .frame(width: 80)
+                }
             }
-            .padding(.top, 16)
+            .padding(.top, 12)
             .padding(.bottom, 4)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(.primary)
-                    .frame(height: 2)
-                    .offset(y: 2)
-            }
 
             // Transcription content
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 16) {
+                    LazyVStack(alignment: .leading, spacing: 14) {
                         let sorted = session.utterances.sorted { $0.offsetSeconds < $1.offsetSeconds }
                         ForEach(sorted) { utterance in
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(utterance.formattedOffset)
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(utterance.text)
-                                    .font(.body)
+                                    .font(.subheadline)
                             }
                             .id(utterance.id)
                         }
 
-                        // Current partial text
                         if !speechService.currentText.isEmpty {
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(formattedElapsed)
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(speechService.currentText)
-                                    .font(.body)
+                                    .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
                             .id("current")
                         }
                     }
-                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(16)
                 }
                 .onChange(of: session.utterances.count) {
                     if let last = session.utterances.sorted(by: { $0.offsetSeconds < $1.offsetSeconds }).last {
-                        withAnimation {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
+                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
                 }
                 .onChange(of: speechService.currentText) {
-                    withAnimation {
-                        proxy.scrollTo("current", anchor: .bottom)
-                    }
+                    proxy.scrollTo("current", anchor: .bottom)
                 }
             }
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal)
-            .padding(.top, 8)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
 
-            Spacer()
+            Spacer(minLength: 8)
 
             // Bottom controls
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Button(action: togglePause) {
                     HStack(spacing: 6) {
                         Image(systemName: speechService.isPaused ? "play.fill" : "pause.fill")
+                            .font(.caption)
                         Text(speechService.isPaused ? "再開" : "一時停止")
+                            .font(.subheadline)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color(.systemGray6))
+                    .padding(.vertical, 13)
+                    .background(Color(.systemGray5))
                     .foregroundStyle(.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
                 Button(action: stopAndDismiss) {
                     HStack(spacing: 6) {
                         Image(systemName: "xmark")
+                            .font(.caption)
                         Text("終了")
+                            .font(.subheadline)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color(.systemGray6))
+                    .padding(.vertical, 13)
+                    .background(Color(.systemGray5))
                     .foregroundStyle(.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 16)
             .padding(.bottom, 8)
         }
-        .background(Color(.systemGroupedBackground))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .preferredColorScheme(.light)
         .task {
             await startRecognition()
         }
@@ -170,6 +171,12 @@ struct LiveTranscriptionView: View {
         return String(format: "%02d:%02d:%02d", h, m, s)
     }
 
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm yyyy/MM/dd"
+        return formatter.string(from: date)
+    }
+
     private func startRecognition() async {
         let authorized = await speechService.requestAuthorization()
         guard authorized else {
@@ -177,25 +184,23 @@ struct LiveTranscriptionView: View {
             return
         }
 
+        let context = modelContext
+        let currentSession = session
         speechService.onUtteranceFinalized = { text, offset in
             let utterance = Utterance(
                 text: text,
                 offsetSeconds: offset
             )
-            session.utterances.append(utterance)
-            try? modelContext.save()
+            currentSession.utterances.append(utterance)
+            try? context.save()
         }
 
-        do {
-            try speechService.start()
-        } catch {
-            showError = error.localizedDescription
-        }
+        speechService.start()
     }
 
     private func togglePause() {
         if speechService.isPaused {
-            try? speechService.resume()
+            speechService.resume()
         } else {
             speechService.pause()
         }
@@ -205,7 +210,6 @@ struct LiveTranscriptionView: View {
         speechService.stop()
         session.isActive = false
 
-        // Set title from first utterance content
         if session.title == "新しい会話", !session.preview.isEmpty {
             let preview = session.preview
             session.title = String(preview.prefix(30))

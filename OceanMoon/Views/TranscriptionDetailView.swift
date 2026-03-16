@@ -5,72 +5,79 @@ struct TranscriptionDetailView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Session header
-            HStack {
+            // Session header card
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.title)
-                        .font(.title3)
+                        .font(.subheadline)
                         .fontWeight(.semibold)
-                    Text(session.createdAt.formatted(date: .numeric, time: .shortened))
-                        .font(.caption)
+                    Text(formatDate(session.createdAt))
+                        .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 Text(formattedDuration)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
-            .padding()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-            .padding(.horizontal)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
 
-            // Tab header
+            // 文字起こし tab header
             HStack {
-                Text("文字起こし")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                VStack(spacing: 4) {
+                    Text("文字起こし")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Rectangle()
+                        .fill(.primary)
+                        .frame(height: 2)
+                        .frame(width: 80)
+                }
             }
-            .padding(.top, 16)
+            .padding(.top, 12)
             .padding(.bottom, 4)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(.primary)
-                    .frame(height: 2)
-                    .offset(y: 2)
-            }
 
             // Transcription content
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
+                LazyVStack(alignment: .leading, spacing: 14) {
                     let sorted = session.utterances.sorted { $0.offsetSeconds < $1.offsetSeconds }
                     if sorted.isEmpty {
                         Text("文字起こしデータがありません")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .center)
                             .padding(.top, 40)
                     } else {
                         ForEach(sorted) { utterance in
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 3) {
                                 Text(utterance.formattedOffset)
-                                    .font(.caption)
+                                    .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(utterance.text)
-                                    .font(.body)
+                                    .font(.subheadline)
                                     .textSelection(.enabled)
                             }
                         }
                     }
                 }
-                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
             }
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal)
-            .padding(.top, 8)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(.horizontal, 16)
+            .padding(.top, 6)
+
+            Spacer()
         }
-        .background(Color(.systemGroupedBackground))
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
+        .preferredColorScheme(.light)
         .navigationTitle("OceanMoon")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -90,6 +97,12 @@ struct TranscriptionDetailView: View {
         let m = (total % 3600) / 60
         let s = total % 60
         return String(format: "%02d:%02d:%02d", h, m, s)
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm yyyy/MM/dd"
+        return formatter.string(from: date)
     }
 
     private func exportText() -> String {

@@ -6,5 +6,10 @@
 	<string>音声をリアルタイムで文字起こしするためにマイクを使用します。</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>音声認識を使用してリアルタイムで文字起こしを行います。</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>systemGroupedBackground</string>
+	</dict>
 </dict>
 </plist>

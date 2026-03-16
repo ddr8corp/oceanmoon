@@ -19,10 +19,13 @@ targets:
       - OceanMoon
     settings:
       base:
+        GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_FILE: OceanMoon/Info.plist
         PRODUCT_BUNDLE_IDENTIFIER: com.oceanmoon.app
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
         SWIFT_STRICT_CONCURRENCY: complete
+        SUPPORTED_INTERFACE_ORIENTATIONS: "UIInterfaceOrientationPortrait"
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
     entitlements:
       path: OceanMoon/OceanMoon.entitlements
