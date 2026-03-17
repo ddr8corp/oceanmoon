@@ -7,7 +7,10 @@
 - リアルタイム文字起こし（タイムスタンプ付き）
 - スピーカー経由の音声認識（リモート会議対応）
 - セッション履歴の保存・閲覧
-- テキスト共有・エクスポート
+- セッションタイトルの編集
+- 過去の文字起こしテキストの編集
+- テキスト共有・エクスポート（タイトル・日時付き）
+- 録音中の画面スリープ防止
 - 完全オンデバイス処理（ネット接続不要）
 - 日本語対応
 
@@ -16,6 +19,7 @@
 - iOS 26.0+
 - Xcode 26.0+
 - iPhone（マイク必須）
+- 実機が必要（シミュレーターでは音声認識が動作しません）
 
 ## セットアップ
 
@@ -32,12 +36,30 @@ open OceanMoon.xcodeproj
 
 Xcode で Signing & Capabilities から Team を設定し、実機にビルドしてください。
 
+### CLI からのビルド・インストール
+
+```bash
+# ビルド（実機向け）
+xcodegen generate
+xcodebuild -project OceanMoon.xcodeproj -scheme OceanMoon -destination 'id=<DEVICE_ID>' -allowProvisioningUpdates build
+
+# デバイスにインストール
+xcrun devicectl device install app --device <DEVICE_ID> <path_to_app>
+```
+
+デバイスIDは `xcrun xctrace list devices` で確認できます。
+
 ## 技術構成
 
 - **音声認識**: Apple SpeechAnalyzer + SpeechTranscriber
 - **UI**: SwiftUI
 - **データ保存**: SwiftData
 - **音声キャプチャ**: AVAudioEngine → AsyncStream\<AnalyzerInput\>
+
+## 制限事項
+
+- 話者分離（Speaker Diarization）は iOS 26 の SpeechAnalyzer API では未対応
+- シミュレーターでは音声認識機能が動作しないため、実機テストが必要
 
 ## ライセンス
 
