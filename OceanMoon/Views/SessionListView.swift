@@ -49,8 +49,8 @@ struct SessionListView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color(.systemGray5))
-                    .foregroundStyle(.primary)
+                    .background(Color.black)
+                    .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .padding(.horizontal, 16)
@@ -59,7 +59,7 @@ struct SessionListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(Color(.systemGroupedBackground).ignoresSafeArea())
-            .navigationTitle("OceanMoon")
+            .navigationTitle("シンプル文字起こし")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Session.self) { session in
                 TranscriptionDetailView(session: session)
@@ -127,7 +127,7 @@ struct SessionRowView: View {
 
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm yyyy/MM/dd"
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
         return formatter.string(from: date)
     }
 }

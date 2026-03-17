@@ -1,7 +1,10 @@
 import SwiftUI
 
 struct TranscriptionDetailView: View {
-    let session: Session
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var session: Session
+    @State private var isEditingTitle = false
+    @State private var editingTitle = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -11,6 +14,10 @@ struct TranscriptionDetailView: View {
                     Text(session.title)
                         .font(.subheadline)
                         .fontWeight(.semibold)
+                        .onTapGesture {
+                            editingTitle = session.title
+                            isEditingTitle = true
+                        }
                     Text(formatDate(session.createdAt))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -55,7 +62,7 @@ struct TranscriptionDetailView: View {
                     } else {
                         ForEach(sorted) { utterance in
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(utterance.formattedOffset)
+                                Text(utterance.formattedTimestamp)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(utterance.text)
@@ -78,16 +85,48 @@ struct TranscriptionDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .preferredColorScheme(.light)
-        .navigationTitle("OceanMoon")
+        .navigationTitle("シンプル文字起こし")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(
                     item: exportText(),
                     subject: Text(session.title),
-                    message: Text("OceanMoonで文字起こし")
+                    message: Text("シンプル文字起こし")
                 )
             }
+        }
+        .sheet(isPresented: $isEditingTitle) {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    TextEditor(text: $editingTitle)
+                        .font(.body)
+                        .padding(12)
+                        .background(Color(.systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(16)
+                        .frame(maxHeight: .infinity)
+                }
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle("タイトルを編集")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") {
+                            isEditingTitle = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") {
+                            session.title = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                            try? modelContext.save()
+                            isEditingTitle = false
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
     }
 
@@ -101,12 +140,14 @@ struct TranscriptionDetailView: View {
 
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm yyyy/MM/dd"
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
         return formatter.string(from: date)
     }
 
     private func exportText() -> String {
         let sorted = session.utterances.sorted { $0.offsetSeconds < $1.offsetSeconds }
-        return sorted.map { "\($0.formattedOffset)\n\($0.text)" }.joined(separator: "\n\n")
+        let header = "【\(session.title)】\n\(formatDate(session.createdAt))\n"
+        let body = sorted.map { "\($0.formattedTimestamp)\n\($0.text)" }.joined(separator: "\n\n")
+        return header + "\n" + body
     }
 }

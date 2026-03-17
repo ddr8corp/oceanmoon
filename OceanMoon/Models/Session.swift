@@ -50,4 +50,11 @@ final class Utterance {
         let s = total % 60
         return String(format: "%02d:%02d:%02d", h, m, s)
     }
+
+    var formattedTimestamp: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        let time = formatter.string(from: timestamp)
+        return "\(time) (\(formattedOffset))"
+    }
 }

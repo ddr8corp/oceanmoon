@@ -111,15 +111,7 @@ final class SpeechRecognitionService: @unchecked Sendable {
         inputBuilder?.finish()
         inputBuilder = nil
 
-        let text = currentSegmentText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty {
-            let offset = elapsedSeconds
-            let callback = onUtteranceFinalized
-            DispatchQueue.main.async { [weak self] in
-                callback?(text, offset)
-                self?.currentText = ""
-            }
-        }
+        finalizeSegment(text: currentSegmentText)
 
         analyzerTask?.cancel()
         resultTask?.cancel()
@@ -190,6 +182,7 @@ final class SpeechRecognitionService: @unchecked Sendable {
         }
 
         currentSegmentText = ""
+        lastFinalizedText = ""
 
         DispatchQueue.main.async { [weak self] in
             self?.startTime = Date()
@@ -271,18 +264,26 @@ final class SpeechRecognitionService: @unchecked Sendable {
         log.info("✅ Started (SpeechAnalyzer)")
     }
 
+    private var lastFinalizedText = ""
+
     private func finalizeSegment(text: String) {
         pauseTimer?.invalidate()
         pauseTimer = nil
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard trimmed != lastFinalizedText else {
+            log.info("⏭️ Skipping duplicate: \"\(trimmed)\"")
+            currentSegmentText = ""
+            return
+        }
 
         let offset = elapsedSeconds
         let callback = onUtteranceFinalized
 
         log.info("✅ Finalized: \"\(trimmed)\"")
 
+        lastFinalizedText = trimmed
         currentSegmentText = ""
         DispatchQueue.main.async { [weak self] in
             callback?(trimmed, offset)

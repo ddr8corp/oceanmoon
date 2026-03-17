@@ -18,7 +18,7 @@ struct LiveTranscriptionView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("OceanMoon")
+                Text("シンプル文字起こし")
                     .font(.headline)
                 Spacer()
                 Color.clear.frame(width: 24, height: 24)
@@ -74,7 +74,7 @@ struct LiveTranscriptionView: View {
                         let sorted = session.utterances.sorted { $0.offsetSeconds < $1.offsetSeconds }
                         ForEach(sorted) { utterance in
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(utterance.formattedOffset)
+                                Text(utterance.formattedTimestamp)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                 Text(utterance.text)
@@ -134,8 +134,8 @@ struct LiveTranscriptionView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(Color(.systemGray5))
-                    .foregroundStyle(.primary)
+                    .background(Color.black)
+                    .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
@@ -148,8 +148,8 @@ struct LiveTranscriptionView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(Color(.systemGray5))
-                    .foregroundStyle(.primary)
+                    .background(Color.black)
+                    .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
             }
@@ -159,6 +159,12 @@ struct LiveTranscriptionView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .preferredColorScheme(.light)
+        .onChange(of: speechService.isRecording) { _, recording in
+            UIApplication.shared.isIdleTimerDisabled = recording
+        }
+        .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
         .task {
             await startRecognition()
         }
@@ -182,7 +188,7 @@ struct LiveTranscriptionView: View {
 
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm yyyy/MM/dd"
+        formatter.dateFormat = "yyyy/MM/dd HH:mm"
         return formatter.string(from: date)
     }
 

@@ -1,4 +1,4 @@
-# OceanMoon
+# シンプル文字起こし (OceanMoon)
 
 リアルタイム音声文字起こしiOSアプリ。Apple SpeechAnalyzer (iOS 26) を使用し、直接の声だけでなくスピーカーからの音声も認識します。
 
