@@ -94,7 +94,7 @@ struct SessionRowView: View {
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.preview.isEmpty ? "Empty Conversation" : session.preview)
+                Text(session.title)
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .lineLimit(1)

@@ -8,7 +8,7 @@ final class Session {
     var isActive: Bool
     @Relationship(deleteRule: .cascade) var utterances: [Utterance]
 
-    init(title: String = "新しい会話", createdAt: Date = .now) {
+    init(title: String = "新しい議事録", createdAt: Date = .now) {
         self.title = title
         self.createdAt = createdAt
         self.isActive = true

@@ -5,6 +5,8 @@ struct TranscriptionDetailView: View {
     @Bindable var session: Session
     @State private var isEditingTitle = false
     @State private var editingTitle = ""
+    @State private var editingUtterance: Utterance?
+    @State private var editingUtteranceText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,6 +71,10 @@ struct TranscriptionDetailView: View {
                                     .font(.subheadline)
                                     .textSelection(.enabled)
                             }
+                            .onTapGesture {
+                                editingUtterance = utterance
+                                editingUtteranceText = utterance.text
+                            }
                         }
                     }
                 }
@@ -121,6 +127,44 @@ struct TranscriptionDetailView: View {
                             session.title = editingTitle.trimmingCharacters(in: .whitespacesAndNewlines)
                             try? modelContext.save()
                             isEditingTitle = false
+                        }
+                        .fontWeight(.semibold)
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+        .sheet(item: $editingUtterance) { utterance in
+            NavigationStack {
+                VStack(spacing: 0) {
+                    Text(utterance.formattedTimestamp)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 28)
+                        .padding(.top, 12)
+                    TextEditor(text: $editingUtteranceText)
+                        .font(.body)
+                        .padding(12)
+                        .background(Color(.systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .padding(16)
+                        .frame(maxHeight: .infinity)
+                }
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle("テキストを編集")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("キャンセル") {
+                            editingUtterance = nil
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") {
+                            utterance.text = editingUtteranceText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            try? modelContext.save()
+                            editingUtterance = nil
                         }
                         .fontWeight(.semibold)
                     }

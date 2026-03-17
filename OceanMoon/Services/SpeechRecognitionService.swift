@@ -183,6 +183,7 @@ final class SpeechRecognitionService: @unchecked Sendable {
 
         currentSegmentText = ""
         lastFinalizedText = ""
+        segmentFinalized = false
 
         DispatchQueue.main.async { [weak self] in
             self?.startTime = Date()
@@ -207,12 +208,18 @@ final class SpeechRecognitionService: @unchecked Sendable {
                         self.finalizeSegment(text: text)
                     } else {
                         log.info("🗣️ \"\(text)\"")
-                        self.currentSegmentText = text
-                        DispatchQueue.main.async { [weak self] in
-                            self?.currentText = text
+                        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if self.segmentFinalized && trimmed != self.lastFinalizedText {
+                            self.segmentFinalized = false
                         }
-                        if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            self.resetPauseTimer()
+                        if !self.segmentFinalized {
+                            self.currentSegmentText = text
+                            DispatchQueue.main.async { [weak self] in
+                                self?.currentText = text
+                            }
+                            if !trimmed.isEmpty {
+                                self.resetPauseTimer()
+                            }
                         }
                     }
                 }
@@ -265,6 +272,7 @@ final class SpeechRecognitionService: @unchecked Sendable {
     }
 
     private var lastFinalizedText = ""
+    private var segmentFinalized = false
 
     private func finalizeSegment(text: String) {
         pauseTimer?.invalidate()
@@ -272,6 +280,11 @@ final class SpeechRecognitionService: @unchecked Sendable {
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        guard !segmentFinalized else {
+            log.info("⏭️ Skipping (segment already finalized): \"\(trimmed)\"")
+            currentSegmentText = ""
+            return
+        }
         guard trimmed != lastFinalizedText else {
             log.info("⏭️ Skipping duplicate: \"\(trimmed)\"")
             currentSegmentText = ""
@@ -284,6 +297,7 @@ final class SpeechRecognitionService: @unchecked Sendable {
         log.info("✅ Finalized: \"\(trimmed)\"")
 
         lastFinalizedText = trimmed
+        segmentFinalized = true
         currentSegmentText = ""
         DispatchQueue.main.async { [weak self] in
             callback?(trimmed, offset)

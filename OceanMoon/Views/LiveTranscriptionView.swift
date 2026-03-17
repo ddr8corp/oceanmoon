@@ -235,7 +235,7 @@ struct LiveTranscriptionView: View {
         speechService.stop()
         session.isActive = false
 
-        if session.title == "新しい会話", !session.preview.isEmpty {
+        if session.title == "新しい議事録", !session.preview.isEmpty {
             let preview = session.preview
             session.title = String(preview.prefix(30))
         }
