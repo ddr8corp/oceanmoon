@@ -21,9 +21,13 @@ export default function Home() {
       <main>
         {/* Hero */}
         <section className="max-w-4xl mx-auto px-6 py-24 text-center">
-          <p className="text-sm font-medium text-gray-500 mb-4 tracking-widest uppercase">
-            iOS App
-          </p>
+          <img
+            src="/icon.png"
+            alt="シンプル文字起こし"
+            width={120}
+            height={120}
+            className="mx-auto mb-8 rounded-[26px] shadow-lg"
+          />
           <h1 className="text-5xl font-bold tracking-tight mb-4 leading-tight">
             シンプル文字起こし
           </h1>

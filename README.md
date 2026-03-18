@@ -56,6 +56,14 @@ xcrun devicectl device install app --device <DEVICE_ID> <path_to_app>
 - **データ保存**: SwiftData
 - **音声キャプチャ**: AVAudioEngine → AsyncStream\<AnalyzerInput\>
 
+## ランディングページ
+
+`lp/` ディレクトリに Next.js + Tailwind CSS で構築したランディングページがあります。
+
+- **公開URL**: https://smoji.ddr8.com
+- **デプロイ**: `cd lp && vercel --prod --yes`
+- **ホスティング**: Vercel
+
 ## 制限事項
 
 - 話者分離（Speaker Diarization）は iOS 26 の SpeechAnalyzer API では未対応

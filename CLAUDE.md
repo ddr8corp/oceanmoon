@@ -54,6 +54,57 @@ Session.utterances に Utterance 追加 → SwiftData 保存
 - **SessionListView**: `@Query` で全セッションを取得。セッションタイトルを一覧表示
 - **TranscriptionDetailView**: セッションタイトルと発言テキストの編集、ShareLink によるエクスポート（タイトル・日時をヘッダーに含む）
 
+## App Store 関連
+
+- **バンドルID**: `com.ddr8.simple-transcription`
+- **SKU**: `simple-transcription`
+- **Team ID**: `54QB3RW3YS` (ddr8 co., ltd.)
+
+### TestFlight / App Store アップロード
+
+```bash
+# アーカイブ作成
+xcodegen generate
+xcodebuild -project OceanMoon.xcodeproj -scheme OceanMoon -destination 'generic/platform=iOS' -archivePath /tmp/OceanMoon.xcarchive archive -allowProvisioningUpdates
+
+# App Store Connect にアップロード（ExportOptions.plist が必要）
+xcodebuild -exportArchive -archivePath /tmp/OceanMoon.xcarchive -exportOptionsPlist /tmp/ExportOptions.plist -exportPath /tmp/OceanMoonExport -allowProvisioningUpdates
+```
+
+ExportOptions.plist の内容:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>method</key>
+    <string>app-store-connect</string>
+    <key>destination</key>
+    <string>upload</string>
+    <key>teamID</key>
+    <string>54QB3RW3YS</string>
+</dict>
+</plist>
+```
+
+## ランディングページ (lp/)
+
+- **URL**: https://smoji.ddr8.com
+- **技術**: Next.js + Tailwind CSS (`lp/` ディレクトリ)
+- **ホスティング**: Vercel (ddr8-projects)
+- **カスタムドメイン**: `smoji.ddr8.com` (CNAME → Vercel)
+
+### LP デプロイ
+
+```bash
+cd lp
+vercel --prod --yes
+```
+
+- LP のアイコン画像は `lp/public/icon.png`（アプリアイコンと同じ）
+- プライバシーポリシーは LP 内に掲載 (`#privacy`)
+- サポート・問い合わせ先: https://www.ddr8.co.jp/
+
 ## 注意点
 
 - Info.plist にマイクと音声認識の使用理由が日本語で記述されている（変更時は日本語を維持）
